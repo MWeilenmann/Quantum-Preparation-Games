@@ -2,7 +2,7 @@
 
 This repository is a companion to the article:  
 
-Quantum Preparation Games 
+Quantum Preparation Games
 by M. Weilenmann, E.A. Aguilar, and N. Navascués,
 IQOQI Vienna - Austrian Academy of Sciences,
 3rd November 2020   
