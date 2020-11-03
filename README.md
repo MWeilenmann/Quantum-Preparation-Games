@@ -1,4 +1,5 @@
 # Quantum-Preparation-Games
+
 This repository is a companion to the article:  
 
 Quantum Preparation Games 
@@ -10,10 +11,11 @@ IQOQI Vienna - Austrian Academy of Sciences
 The main files are: 
 
 
-(1) OneShotExample.m     
+(1) OneShotExample.m   
+
 This contains a loop to create a plot of a e1-e2 tradeoff, with different     
-experimental strategies (Global, LOCC, and Fixed Measurements).     
-Within the loop the reader can see how each strategy is implemented in practice.      
+experimental strategies (Global, LOCC, and Fixed Measurements).  Within 
+the loop the reader can see how each strategy is implemented in practice.      
 
 Requires auxiliary file: paulis.m     
 
@@ -21,6 +23,7 @@ External requirements: QETLAB, CVX, MOSEK
 
 
 (2) BoundedConfigurationExample.m     
+
 This file also contains a loop to create a e1-e2 tradeoff plot.     
 There are N measurement rounds, with state_dims specifying the size of     
 the configuration space at round k. The optimization is not guaranteed     
