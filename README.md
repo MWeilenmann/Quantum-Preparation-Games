@@ -5,8 +5,8 @@ This repository is a companion to the article:
 Quantum Preparation Games
 by M. Weilenmann, E.A. Aguilar, and N. Navascués,
 IQOQI Vienna - Austrian Academy of Sciences,
-3rd November 2020   
-
+4th November 2020   
+https://arxiv.org/abs/2011.02216
 
 The main files are: 
 
@@ -22,7 +22,7 @@ External requirements: QETLAB, CVX, MOSEK
 
 (2) BoundedConfigurationExample.m     
 
-This file also contains a loop to create a e1-e2 tradeoff plot. There are N measurement rounds, with state_dims specifying the size of the configuration space at round k. The optimization is not guaranteed to be optimal, but in practice the errors behave nicely. Sampling over different random initializations may therefore yield different results. The main optimization function is CS.optimize_omega_state.          
+This file also contains a loop to create a e1-e2 tradeoff plot. There are N measurement rounds, with state_dims specifying the size of the configuration space at round k. The optimization is not guaranteed to be optimal, but in practice the errors behave nicely. Sampling over different random initializations may therefore yield different results. The main optimization function is CS.optimize_povm_round.          
 
 Requires auxiliary files: QI.m, CS.m     
 
