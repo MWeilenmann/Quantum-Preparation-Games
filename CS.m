@@ -39,60 +39,114 @@ classdef CS
           end
         end
 
-        function OptOmPovm = optimize_omega_state(OmTree, PovmTree, StateDims, MuTree, k, s_k, KTilde)
-          % Optimization function. This updates the POVMs after doing an
-          % optimization on configuration state {k,s_k}.
-          % Minimizes Err_II
+        function WitnessOp = calculate_mu_witness(MuTree, Povm, k, s_k)
+          % Povm is the whole tree
+          WitnessOp = eye(4)*MuTree{k, s_k};
+          n_outputs = size(Povm{k, s_k}, 2);
+          for j=1:(n_outputs-1)
+            % disp(MuTree{k+1, j})
+            WitnessOp = WitnessOp - (MuTree{k+1, j})*Povm{k, s_k}{j};
+          end
+        end
+        
+        function OptPovmTree = optimize_povm_round(OmTree, PovmTree, StateDims, MuTree, k, KTilde, err1)
+          % Optimization function. This updates the POVMs of all states in
+          % round k. The SDP is an application of Eq53.
+          % Optimization Variables:
+          %       (1)  {M_{s'|s}} for all s' in S_{k+1} and s in S_k
+          %       (2)  {mu^j_{s_j}} for j<=k  and all s_j
+          %
+          % Min        Err_II
           % subject to:
           %            Err_II >= 0
-          %            M_i >=0  for all i={1,2,... ,m-1}
-          %            W_1>=0 , W_2>=0
-          %            Eye(4) - Sum_{i=1}^{m-1} M_i >= 0
-          %            mu^k_{s}*Eye(4) - Sum_{i=1}^{m-1} M_i * mu^{k+1}_i >= W_1 + Partial Transpose(W_2)
           %            Omega - (1 - Err_II)*Eye(d_E) >= 0
-          n_outputs = size(PovmTree{k,s_k}, 2);
+          %            for all s in S_k   and s' in S_{k+1}
+          %                M_{s'|s} >= 0
+          %                Sum_{s'} M_{s'|s} == Eye(4)
+          %            for all j<= k , and s in S_j ::
+          %                mu^j_{s}*Eye(4) - Sum_{s'} M_{s'|s} * mu^{j+1}_{s'} == W_{j, s}
+          %                W_{j, s} = W1_{j,s} + PartialTranspose(W2_{j,s})
+          %                W1_{j,s} , W2_{j,s} >= 0
+          %                0<= mu^j_{s} <= 1
+          %            mu^1_1 <= error_1
+
+          
+          n_outputs = size(PovmTree{k,1}, 2);  %
           dE = size(KTilde{1}, 1);
-          OptOmTree = OmTree;
-          err2 = sdpvar(1,1);
+          
+          err2 = sdpvar(1,1); % target value to minimize
           constraints = [err2>=0];
-          for i=1:(n_outputs-1)
-            var_povm{i} = sdpvar(4, 4, 'hermitian', 'complex');
-            constraints = [constraints, var_povm{i}>=0];
+          
+          % OptPovmTree is like PovmTree except it has SDP variables for the corresponding state
+          OptPovmTree = PovmTree;
+          for s_k=1:StateDims(k)
+              OptPovmTree{k, s_k}{n_outputs} = eye(4);
+              for i=1:(n_outputs-1)
+                OptPovmTree{k, s_k}{i} = sdpvar(4, 4, 'hermitian', 'complex');
+                OptPovmTree{k, s_k}{n_outputs} = OptPovmTree{k, s_k}{n_outputs} - OptPovmTree{k, s_k}{i};
+                constraints = [constraints, OptPovmTree{k, s_k}{i}>=0];
+              end
+              constraints = [constraints, OptPovmTree{k, s_k}{n_outputs}>=0];
           end
-          var_povm{n_outputs} = zeros(4);
+
+          % Create Mu Variables
+          OptMuTree = MuTree;
+          if k>1
+              for s_k=1:StateDims(k)
+                  OptMuTree{k, s_k} = sdpvar(1,1);
+                  constraints = [constraints, OptMuTree{k, s_k}>=0, OptMuTree{k, s_k}<=1];
+              end
+              for j=(k-1):-1:2
+                  for s_j=1:StateDims(j)
+                      OptMuTree{j, s_j} = sdpvar(1,1);
+                      constraints = [constraints, OptMuTree{j, s_j}>=0, OptMuTree{j, s_j}<=1];
+                  end
+              end
+          end
+          OptMuTree{1, 1} = sdpvar(1,1);
+          constraints = [constraints, OptMuTree{1, 1}>=0, OptMuTree{1, 1}<=err1];
+          
+          % Create Witness Variables and constraints
+          for s_k=1:StateDims(k)
+              W{k, s_k}{1} = sdpvar(4, 4, 'hermitian', 'complex');
+              W{k, s_k}{2} = sdpvar(4, 4, 'hermitian', 'complex');
+              constraints = [constraints, W{k, s_k}{1}>=0, W{k, s_k}{2}>=0];
+              witness{k, s_k} = CS.calculate_mu_witness(OptMuTree, OptPovmTree, k, s_k);
+              constraints = [constraints, witness{k, s_k} == (W{k, s_k}{1}+QI.PT(W{k, s_k}{2},2,[2,2]))]; 
+          end
+          for j=(k-1):-1:1
+              for s_j=1:StateDims(j)
+                 W{j, s_j}{1} = sdpvar(4, 4, 'hermitian', 'complex');
+                 W{j, s_j}{2} = sdpvar(4, 4, 'hermitian', 'complex');
+                 constraints = [constraints, W{j, s_j}{1}>=0, W{j, s_j}{2}>=0];
+                 witness{j, s_j} = CS.calculate_mu_witness(OptMuTree, OptPovmTree, j, s_j);
+                 constraints = [constraints, witness{j, s_j} == (W{j, s_j}{1}+QI.PT(W{j, s_j}{2},2,[2,2]))];
+              end
+          end
+          
           % Calculate Variable omega
-          OptOmTree{k,s_k} = CS.calculate_omega_state(OptOmTree, var_povm, k, KTilde);
+          OptOmTree = OmTree; % variable held here
+          for s_k=1:StateDims(k)
+            OptOmTree{k,s_k} = CS.calculate_omega_state(OptOmTree, OptPovmTree{k, s_k}, k, KTilde);
+          end
           for j=(k-1):-1:1
             for s_j=1:StateDims(j)
-              OptOmTree{j, s_j} = CS.calculate_omega_state(OptOmTree, PovmTree{j, s_j}, j, KTilde);
+              OptOmTree{j, s_j} = CS.calculate_omega_state(OptOmTree, OptPovmTree{j, s_j}, j, KTilde);
             end
           end
-          omega = OptOmTree{1,1};
-          % Create Witness Variables
-          W1 = sdpvar(4, 4, 'hermitian', 'complex');
-          W2 = sdpvar(4, 4, 'hermitian', 'complex');
-          constraints = [constraints, W1>=0, W2>=0];
-
-          witness = eye(4)*MuTree{k, s_k};
-          sum_op = zeros(4);
-          for j=1:(n_outputs-1)
-              witness = witness - var_povm{j}*MuTree{k+1,j};
-              sum_op = sum_op + var_povm{j};
-          end
-          constraints = [constraints, (eye(4)-sum_op)>=0];
-          constraints = [constraints, witness==(W1+QI.PT(W2,2,[2,2]))];
-          constraints = [constraints, (omega - (1-err2)*eye(dE))>=0];
+          constraints = [constraints, (OptOmTree{1,1} - (1-err2)*eye(dE))>=0];
+          
+          % Perform SDP
           options = sdpsettings('verbose', 0, 'solver','mosek');
           optimize(constraints, err2, options);
-          % disp('Error II:')
-          % disp(value(err2))
-          OptOmPovm = PovmTree;
-          OptOmPovm{k, s_k}{n_outputs} = eye(4);
-          for i=1:(n_outputs-1)
-            OptOmPovm{k, s_k}{i} = value(var_povm{i});
-            OptOmPovm{k, s_k}{n_outputs} = OptOmPovm{k, s_k}{n_outputs} - OptOmPovm{k, s_k}{i};
+          
+          % Placing the optimized values into the output array
+          for s_k=1:StateDims(k)
+              for i=1:n_outputs
+                OptPovmTree{k, s_k}{i} = value(OptPovmTree{k, s_k}{i});
+              end
           end
-          yalmip('clear');
+          yalmip('clear'); % clears memory, otherwise process slows down
         end
 
         function ERROR2 = calculate_error2(OmTree)
@@ -155,33 +209,6 @@ classdef CS
           end
           % povm_tree{k,s}{s'} is a 4x4 matrix povm element
           % sum_s'  povm_tree{k,s}{s'} = eye(4)
-        end
-        
-        function NewMuTree = update_mu_tree(MuTree, PovmTree, StateDims, k, s_k)
-          % If only the POVMs of state s_k in round k were changed, then
-          % this is an efficient way of updating the mu tree without
-          % recalculating everyting
-          % see update_mu_tree_round if all states in round k were updated
-          NewMuTree = MuTree;
-          num_mmts = size(StateDims, 2);
-          if(k==num_mmts)
-            NewMuTree{k, s_k} = QI.optimize_over_PPT_states_d4(PovmTree{k,s_k}{1});
-          else
-            operator = zeros(4);
-            for s_prime=1:StateDims(k+1)
-              operator = operator + PovmTree{k,s_k}{s_prime}*MuTree{k+1, s_prime};
-            end
-            NewMuTree{k, s_k} = QI.optimize_over_PPT_states_d4(operator);
-          end
-          for j=(k-1):-1:1
-            for s_j=1:StateDims(j)
-              operator = zeros(4);
-              for s_prime=1:StateDims(j+1)
-                operator = operator + PovmTree{j,s_j}{s_prime}*NewMuTree{j+1, s_prime};
-              end
-              NewMuTree{j, s_j} = QI.optimize_over_PPT_states_d4(operator);
-            end
-          end
         end
         
         function NewMuTree = update_mu_tree_round(MuTree, PovmTree, StateDims, k)
